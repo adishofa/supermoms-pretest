@@ -1,19 +1,45 @@
-import { useState } from 'react'
-import { StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from 'react-native'
+import {
+  documentDirectory,
+  StorageAccessFramework,
+  copyAsync
+} from 'expo-file-system'
+import { canOpenURL, openURL } from 'expo-linking'
+
 import ButtonCSV from './components/ButtonConvert'
-// import { documentDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system'
+import {
+  uploadFile,
+  shareFile,
+  getLinkList
+} from './services/dropbox.services'
 
 export default function App() {
   const [sampleInput, setSampleInput] = useState('')
   const [outputTextOne, setOutputTextOne] = useState('')
   const [outputTextTwo, setOutputTextTwo] = useState('')
-  const [outputCSVData, setOutputCSVData] = useState([['']])
+  const [showButton, setShowButton] = useState(false)
+
+  useEffect(() => {
+    const bounceInput = setTimeout(() => {
+      if (sampleInput.length > 0) {
+        setShowButton(true)
+      } else {
+        setShowButton(false)
+      }
+    }, 2000)
+    return () => clearTimeout(bounceInput)
+  }, [sampleInput])
 
   function handleInputChange(val) {
     setSampleInput(val)
     setOutputTextOne(val.toUpperCase())
     setOutputTextTwo(setAlternateData(val))
-    setOutputCSVData([setAlternateData(val).split('')])
   }
 
   function setAlternateData(val) {
@@ -29,21 +55,52 @@ export default function App() {
     return converted
   }
 
-  function reverseWords(val) {
-    return val.split(' ').map((word) => word.split('').reverse().join('')).join(' ')
-  }
+  async function handleClickButton(ev) {
+    ev.preventDefault()
+    try {
+      const dataCSV = outputTextTwo.split('').join(',')
+      // Requests permissions for external directory
+      const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync()
 
-  async function createCSVFile(val) {
-    // const dataToConvert = setAlternateData(val).split('')
+      if (permissions.granted) {
+        // Gets SAF URI from response
+        const uri = permissions.directoryUri
+        
+        // Gets all files inside of selected directory
+        const files = await StorageAccessFramework.readDirectoryAsync(uri)
 
-    // const writeFile = await documentDirectory()
-  }
+        // Check if file exist
+        const exist = files.filter(f => f.includes('createcsv.csv'))
+        if (exist[0]) await StorageAccessFramework.deleteAsync(exist[0])
+        const pathFile = await StorageAccessFramework.createFileAsync(uri, 'createcsv.csv', 'text/csv')
 
-  async function handleClickButton() {
-    console.log(outputTextTwo.split('').join(','))
-    // console.log(FileSystem.documentDirectory)
-    // const resp = await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}test.csv`, 'g,r,t,h', FileSystem.EncodingType.UTF8)
-    // console.log(resp)
+        // Write or overwrite to file with updated array
+        await StorageAccessFramework.writeAsStringAsync(pathFile, dataCSV, { encoding: 'utf8' })
+        
+        // Copy to local file storage
+        const docDir = await documentDirectory
+        await copyAsync({ from: pathFile, to: docDir })
+
+        // Uploading to dropbox
+        await uploadFile(docDir + 'createcsv.csv')
+
+        // set file to share
+        const linkList = await getLinkList()
+        const urlSharedLink = linkList.links && linkList.links.length > 0 ?
+          linkList.links[0] : await shareFile()
+        
+        const canOpen = await canOpenURL(urlSharedLink.url)
+        if (canOpen) {
+          openURL(urlSharedLink.url)
+        } else {
+          alert('Link can not be open')
+        }
+      } else {
+        alert('Permission to access directory is not granted!')
+      }
+    } catch (err) {
+      alert(err)
+    }
   }
 
   return (
@@ -65,7 +122,7 @@ export default function App() {
         <Text testID='output-uppercase' style={styles.textOutput}>{outputTextOne}</Text>
         <Text testID='output-alternate' style={styles.textOutput}>{outputTextTwo}</Text>
 
-        <ButtonCSV label='CSV created!' onClick={handleClickButton} />
+        { showButton && <ButtonCSV label='CSV created!' onClick={handleClickButton} /> }
     </View>
   )
 }

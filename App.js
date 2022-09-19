@@ -26,8 +26,11 @@ export default function App() {
   const [showButton, setShowButton] = useState(false)
 
   useEffect(() => {
+    // hide button while input is changes
+    setShowButton(false)
     const bounceInput = setTimeout(() => {
       if (sampleInput.length > 0) {
+        // Only show button with timeout 2s to make UX user end of typing
         setShowButton(true)
       } else {
         setShowButton(false)

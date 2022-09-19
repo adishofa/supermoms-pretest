@@ -6,4 +6,7 @@ module.exports = {
     transform: {
         "\\.[jt]sx?$": "babel-jest"
     },
+    transformIgnorePatterns: [
+        "./node_modules/(?!(expo-file-system|@react-native|react-native|expo-modules-core|expo-linking|expo-constants)/)"
+    ]
 };
